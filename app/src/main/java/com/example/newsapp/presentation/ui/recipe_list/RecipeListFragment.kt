@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -20,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -28,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 
@@ -62,7 +66,15 @@ class RecipeListFragment : Fragment() {
             setContent {
                 val recipes = viewModel._recipes.value
                 val query = viewModel.query.value
-                val colorScheme = MaterialTheme.colorScheme
+                val selectedCategory = viewModel.selectedCategory.value
+                val scrollPosition = viewModel.scrollPosition.value
+                val scrollOffset = viewModel.scrollOffset.value
+                val categories = getAllFoodCategories()
+                val selectedIndex = categories.indexOfFirst { it == selectedCategory }
+                val listState = rememberLazyListState(
+                    initialFirstVisibleItemIndex = scrollPosition,
+                    initialFirstVisibleItemScrollOffset = scrollOffset
+                )
                 Column(modifier = Modifier.padding(16.dp)) {
 
                         Row(
@@ -91,21 +103,41 @@ class RecipeListFragment : Fragment() {
                                 }
                             )
                         }
-                    Row(
+                    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+                        viewModel.updateScrollPosition(
+                            listState.firstVisibleItemIndex,
+                            listState.firstVisibleItemScrollOffset
+                        )
+                    }
+                    LaunchedEffect(selectedCategory) {
+                        if (selectedIndex != -1) {
+                            val layoutInfo = listState.layoutInfo
+                            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+                            val isSelectedVisible = visibleItemsInfo.any { it.index == selectedIndex }
+
+                            if (!isSelectedVisible) {
+                                listState.animateScrollToItem(selectedIndex)
+                            }
+                        }
+                    }
+                    LazyRow(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp)
                     ) {
-                        for (category in getAllFoodCategories()) {
-                            Text(
-                                text = category.value,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(8.dp)
+                        itemsIndexed(categories) { index, category ->
+                            FilterChip(
+                                onClick = {
+                                    viewModel.onSelectedCategoryChanged(category.value)
+                                    viewModel.performSearch()
+                                },
+                                label = { Text(category.value) },
+                                selected = selectedCategory == category,
+                                modifier = Modifier.padding(horizontal = 4.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.padding(8.dp))
                     LazyColumn {
                         itemsIndexed(items = recipes) { index, recipe ->
                             RecipeCard(recipe = recipe, onClick = {})
